@@ -34,7 +34,7 @@ class Vacancy:
         """
         Инициализирует объект
         :param vacancy_dict: {str: str}
-            Входящий словарь со всей информацие для инициализации объекта
+            Входящий словарь со всей информацией для инициализации объекта
         """
         self.__name = vacancy_dict['name']
         self.__salary_from = float(vacancy_dict['salary_from'])
