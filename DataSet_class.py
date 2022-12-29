@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import requests
 from xml.etree import ElementTree
+import sqlite3 as sl
 
 
 class DataSet:
@@ -197,7 +198,8 @@ class DataSet:
 
     def generate_currency(self, oldest_date: str, youngest_date: str):
         """
-        Генерирует dataframe с курсами всех валют за указанный период
+        Генерирует dataframe с курсами всех валют за указанный период, а также сохраняет полученный датафрейм в БД
+        в формате sqlite
         :param oldest_date: str
             Дата начала периода
         :param youngest_date: str
@@ -218,6 +220,9 @@ class DataSet:
                     continue
                 df.loc[len(df.index)] = row
         self.__currencies_data = df
+
+        con = sl.connect('currency.sqlite')
+        df.to_sql(name='currency', con=con, if_exists='replace')
 
     def __get_row(self, month: str, year: str):
         """
