@@ -34,3 +34,38 @@
 #         report.generate_pdf(current_vacancy_name, "graph.png", "report.xlsx")
 #     else:
 #         print("Неизвестная команда. Введите 'Вакансии' или 'Статистика'")
+# @staticmethod
+#     def get_statistics_for_year(tuple_args):
+#         """
+#         Возвращает статистику расчитанную за 1 год
+#         :param tuple_args: ([str], str)
+#             Аргументы функции, содержат название файла с данными и наазвание интересующей нас профессии
+#         :return: {}
+#             Статистика за 1 год
+#         """
+#         full_file_name = tuple_args[0]
+#         current_name = tuple_args[1]
+#         year_statistics = {}
+#         year_statistics["vacancies_count_by_town"] = {}
+#         year_statistics["salaries_sum_by_town"] = {}
+#         vacancies_salaries_sum = 0
+#         current_salaries_sum = 0
+#         with open(full_file_name, "r", encoding="UTF-8-sig") as file:
+#             file_reader = csv.DictReader(file, delimiter=",")
+#             headlines_list = list(file_reader.fieldnames)
+#             for line in file_reader:
+#                 vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
+#                 if vacancy is not None:
+#                     year_statistics["vacancies_count"] = year_statistics.setdefault("vacancies_count", 0) + 1
+#                     vacancies_salaries_sum += vacancy.average_ru_salary
+#                     year_statistics["vacancies_count_by_town"][vacancy.area_name] \
+#                         = year_statistics["vacancies_count_by_town"].setdefault(vacancy.area_name, 0) + 1
+#                     year_statistics["salaries_sum_by_town"][vacancy.area_name] \
+#                         = year_statistics["salaries_sum_by_town"].setdefault(vacancy.area_name, 0) \
+#                           + vacancy.average_ru_salary
+#                     if current_name in vacancy.name:
+#                         year_statistics["current_count"] = year_statistics.setdefault("current_count", 0) + 1
+#                         current_salaries_sum += vacancy.average_ru_salary
+#         year_statistics["salary"] = int(vacancies_salaries_sum / year_statistics["vacancies_count"])
+#         year_statistics["current_salary"] = int(current_salaries_sum / year_statistics["current_count"])
+#         return year_statistics

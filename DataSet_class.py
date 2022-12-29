@@ -4,6 +4,7 @@ from Vacancy_class import Vacancy
 from multiprocessing import Pool
 import csv
 import pandas as pd
+import numpy as np
 import requests
 from xml.etree import ElementTree
 
@@ -57,6 +58,7 @@ class DataSet:
         self.__sum_salaries_by_town = {}
         self.__vacancies_count = 0
         self.__current = profession_name
+
         self.__salaries_by_year = {}
         self.__current_salaries_by_year = {}
         self.__salaries_by_town = {}
@@ -65,6 +67,7 @@ class DataSet:
         self.__available_currencies = None
         self.__currencies_data = None
         self.__line_data = None
+        self.__data_by_year = {}
 
     @property
     def vacancies_count(self):
@@ -109,14 +112,14 @@ class DataSet:
                   f'&date_to=2022-12-' \
                   f'{("0" + str(1 + ((hour + 6) // 24)))[-2:]}T{("0" + str((hour + 6) % 24))[-2:]}:00:00'
             response = requests.get(url)
-            if(response.status_code != 200):
+            if response.status_code != 200:
                 print('Error')
                 response = requests.get(url)
             result = response.json()
             for page_num in range(result['pages']):
                 url = url + f'&page={page_num}'
                 page_response = requests.get(url)
-                if (page_response.status_code != 200):
+                if page_response.status_code != 200:
                     print('Error')
                     page_response = requests.get(url)
                 for vacancy in page_response.json()['items']:
@@ -157,22 +160,13 @@ class DataSet:
         oldest_date = None
         youngest_date = None
         currency_frequency = {}
-        data = []
-        with open(file_name, "r", encoding="UTF-8-sig") as file:
-             file_reader = csv.DictReader(file, delimiter=",")
-             for line in file_reader:
-                 key = line["salary_currency"]
-                 currency_frequency[key] = currency_frequency.setdefault(key, 0) + 1
-                 oldest_date = line["published_at"] if oldest_date is None or line["published_at"] < oldest_date \
-                     else oldest_date
-                 youngest_date = line["published_at"] if youngest_date is None or line["published_at"] > youngest_date \
-                     else youngest_date
-                 data.append(line)
+        data = pd.read_csv(file_name)
+        oldest_date = max(data['published_at'])
+        youngest_date = min(data['published_at'])
+        currency_frequency = data['salary_currency'].value_counts()
+        self.__available_currencies = list(currency_frequency[currency_frequency > 5000].keys())
+        self.__line_data = data[data['salary_currency'].isin(self.__available_currencies)]
 
-        self.__available_currencies = \
-            [item[0] for item in currency_frequency.items() if item[1] >= 5000 and item[0] != '']
-
-        self.__line_data = list(filter(lambda v: v['salary_currency'] in self.available_currencies, data))
         return (oldest_date, youngest_date)
 
     def generate_currency(self, oldest_date: str, youngest_date: str):
@@ -232,51 +226,70 @@ class DataSet:
         except Exception:
             return None
 
-    def get_vacancies_data(self) -> [Vacancy]:
+    def get_vacancies_data(self):
         """
-        Возвращает список объектов вакансий полученных из данных
-        :return: [Vacancy]
-            Список вакансий
+        Фильтрует все данные из line_data, вычисляет поле 'salary' и сохраняет выборку из датафрейма в CSV файл
+        :return: Void
         """
-        vacancies = []
-        for line in self.__line_data:
-            salary = self.get_salary(line)
-            if salary is not None:
-                line['salary'] = salary
-                vacancies.append(Vacancy(line))
-        return vacancies
+        self.__line_data['date'] = self.__line_data["published_at"].str[0:4] + '-'\
+                                   + self.__line_data["published_at"].str[5:7]
+        self.__line_data = pd.merge(left=self.__line_data, right=self.__currencies_data, how='left', on='date')
+        dataFrames = []
+        for currency in self.__available_currencies:
+            temp = self.__line_data[self.__line_data['salary_currency'] == currency]
+            temp['rate'] = temp[currency]
+            dataFrames.append(temp)
 
-    def get_salary(self, line: {str: str}):
-        """
-        Возвращает значение зарплаты полученных из полей 'salary_from', 'salary_to', 'salary_currency'
-        :param line: {str: str}
-            Вакансия в виде словаря для получения данных
-        :return: str/None
-            Зарплату в рублях или None при отсутствующих данных
-        """
-        salary_num = ''
-        if line['salary_from'] == '' and line['salary_to'] == '':
-            return None
-        if line['salary_from'] != '' and line['salary_to'] == '':
-            salary_num = line['salary_from']
-        if line['salary_from'] == '' and line['salary_to'] != '':
-            salary_num = line['salary_to']
-        if line['salary_from'] != '' and line['salary_to'] != '':
-            salary_num = str(int((float(line['salary_from']) + float(line['salary_to']))/2))
+        m = pd.concat(dataFrames, ignore_index=True)
 
-        if line['salary_currency'] == 'RUR':
-            return salary_num
-        elif line['salary_currency'] != '':
-            date = line['published_at']
-            date_key = date[0:4] + '-' + date[5:7]
-            try:
-                rate = float(self.__currencies_data[self.__currencies_data['date'] ==
-                                                    date_key][line['salary_currency']])
-                salary = str(int(float(salary_num) * rate))
-            except:
-                return None
-            return salary
-        return None
+        self.__line_data = m[['name', 'salary_from', 'salary_to', 'salary_currency',
+                              'area_name', 'published_at', 'rate']][~m['rate'].isna()]
+
+        with_f = self.__line_data[(~self.__line_data['salary_from'].isna()) & (self.__line_data['salary_to'].isna())]
+        with_t = self.__line_data[(~self.__line_data['salary_to'].isna()) & (self.__line_data['salary_from'].isna())]
+        with_b = self.__line_data[(~self.__line_data['salary_to'].isna()) & (~self.__line_data['salary_from'].isna())]
+
+        with_f['salary'] = with_f['salary_from'] * with_f['rate']
+        with_t['salary'] = with_t['salary_to'] * with_t['rate']
+        with_b['salary'] = (with_b['salary_from'] + with_b['salary_to']) * with_b['rate']
+
+        self.__line_data = pd.concat([with_f, with_t, with_b],
+                                     ignore_index=True)[['name', 'salary', 'area_name', 'published_at']]
+
+        self.__line_data.head(100).to_csv('sample_vacancies.csv')
+
+    def fill_dictionaries_by_pandas(self):
+        """
+        Заполняет словари со статистикой используя Pandas
+        :return:
+        """
+        self.__vacancies_count = len(self.__line_data)
+        for year in range(2003, 2023):
+            year_vacancies = self.__line_data[self.__line_data['published_at'].str[0:4] == str(year)]
+            self.__salaries_by_year[year] = int(np.average(year_vacancies['salary']))
+            self.__vacancies_count_by_year[year] = len(year_vacancies)
+
+            current_year_vacancies =\
+                year_vacancies[year_vacancies['name'].str.contains(self.__current.lower(), case=False)]
+            self.__current_salaries_by_year[year] = int(np.average(current_year_vacancies['salary']))
+            self.__current_count_by_year[year] = len(current_year_vacancies)
+
+            town_year_vacancies = year_vacancies.groupby(['area_name']).size().reset_index(name='count')
+            for _, row in town_year_vacancies.iterrows():
+                key = row['area_name']
+                self.__vacancies_count_by_town[key] = self.__vacancies_count_by_town.setdefault(key, 0) + row['count']
+
+            town_salaries = year_vacancies[['area_name', 'salary']].groupby(by=['area_name']).sum().reset_index()
+            for _, row in town_salaries.iterrows():
+                key = row['area_name']
+                self.__sum_salaries_by_town[key] = self.__sum_salaries_by_town.setdefault(key, 0) + row['salary']
+
+        for key in self.__sum_salaries_by_town.keys():
+            if int(self.__vacancies_count_by_town[key] / self.__vacancies_count * 100) >= 1:
+                self.__salaries_by_town[key] = int(self.__sum_salaries_by_town[key] /
+                                                   self.__vacancies_count_by_town[key])
+        for key in self.__salaries_by_town:
+            self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
 
     @staticmethod
     def csv_reader(file_name: str) -> []:
@@ -383,8 +396,7 @@ class DataSet:
         for key in self.__salaries_by_town:
             self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
 
-    @staticmethod
-    def get_statistics_for_year(tuple_args):
+    def get_statistics_for_year(self, tuple_args):
         """
         Возвращает статистику расчитанную за 1 год
         :param tuple_args: ([str], str)
@@ -392,32 +404,36 @@ class DataSet:
         :return: {}
             Статистика за 1 год
         """
-        full_file_name = tuple_args[0]
+        year = tuple_args[0]
         current_name = tuple_args[1]
         year_statistics = {}
         year_statistics["vacancies_count_by_town"] = {}
         year_statistics["salaries_sum_by_town"] = {}
         vacancies_salaries_sum = 0
         current_salaries_sum = 0
-        with open(full_file_name, "r", encoding="UTF-8-sig") as file:
-            file_reader = csv.DictReader(file, delimiter=",")
-            headlines_list = list(file_reader.fieldnames)
-            for line in file_reader:
-                vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
-                if vacancy is not None:
-                    year_statistics["vacancies_count"] = year_statistics.setdefault("vacancies_count", 0) + 1
-                    vacancies_salaries_sum += vacancy.average_ru_salary
-                    year_statistics["vacancies_count_by_town"][vacancy.area_name] \
-                        = year_statistics["vacancies_count_by_town"].setdefault(vacancy.area_name, 0) + 1
-                    year_statistics["salaries_sum_by_town"][vacancy.area_name] \
-                        = year_statistics["salaries_sum_by_town"].setdefault(vacancy.area_name, 0) \
-                          + vacancy.average_ru_salary
-                    if current_name in vacancy.name:
-                        year_statistics["current_count"] = year_statistics.setdefault("current_count", 0) + 1
-                        current_salaries_sum += vacancy.average_ru_salary
-        year_statistics["salary"] = int(vacancies_salaries_sum / year_statistics["vacancies_count"])
-        year_statistics["current_salary"] = int(current_salaries_sum / year_statistics["current_count"])
-        return year_statistics
+
+        data = self.__data_by_year[year]
+        data['salary'] = [self.get_salary(row) for row in self.__line_data.itertuples()]
+
+        #with open(full_file_name, "r", encoding="UTF-8-sig") as file:
+        #    file_reader = csv.DictReader(file, delimiter=",")
+        #    headlines_list = list(file_reader.fieldnames)
+        #    for line in file_reader:
+        #        vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
+        #        if vacancy is not None:
+        #            year_statistics["vacancies_count"] = year_statistics.setdefault("vacancies_count", 0) + 1
+        #            vacancies_salaries_sum += vacancy.average_ru_salary
+        #            year_statistics["vacancies_count_by_town"][vacancy.area_name] \
+        #                = year_statistics["vacancies_count_by_town"].setdefault(vacancy.area_name, 0) + 1
+        #            year_statistics["salaries_sum_by_town"][vacancy.area_name] \
+        #                = year_statistics["salaries_sum_by_town"].setdefault(vacancy.area_name, 0) \
+        #                  + vacancy.average_ru_salary
+        #            if current_name in vacancy.name:
+        #                year_statistics["current_count"] = year_statistics.setdefault("current_count", 0) + 1
+        #                current_salaries_sum += vacancy.average_ru_salary
+        #year_statistics["salary"] = int(vacancies_salaries_sum / year_statistics["vacancies_count"])
+        #year_statistics["current_salary"] = int(current_salaries_sum / year_statistics["current_count"])
+        #return year_statistics
 
     @staticmethod
     def parse_line_to_vacancy(line, headlines_list):

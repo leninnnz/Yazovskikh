@@ -2,12 +2,15 @@ from DataSet_class import DataSet
 from Report_class import Report
 from Table_statistics import TableStatistics
 
+if __name__ == "__main__":
+    file_name = input("Введите название файла: ")
+    current_vacancy_name = input("Введите название профессии: ")
 
-current_vacancy_name = input("Введите название профессии: ")
-
-
-data_set = DataSet(current_vacancy_name)
-
-data_set.load_data_from_hh()
+    data_set = DataSet(current_vacancy_name)
+    dates = data_set.currency_frequency_reader(file_name='vacancies_dif_currencies.csv')
+    data_set.generate_currency(dates[1], dates[0])
+    data_set.get_vacancies_data()
+    data_set.fill_dictionaries_by_pandas()
+    data_set.print_statistics_dictionaries()
 
 
