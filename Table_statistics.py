@@ -380,8 +380,36 @@ class DataSet_table:
         >>> DataSet_table("vacancies.csv", [])._DataSet_table__remove_white_spaces(" String        without  spaces    ")
         'String without spaces'
         """
-        no_undue_spaces = re.sub(r"\s+", " ", string)
-        return no_undue_spaces.replace("\n", "").replace("\r", "").strip()
+        #no_undue_spaces = re.sub(r"\s+", " ", string)
+        #return no_undue_spaces.replace("\n", "").replace("\r", "").strip()
+
+        #str_without_sym = string.replace("\n", "").replace("\r", "")
+        #chars = []
+        #was_space = True
+        #for c in str_without_sym:
+        #    if c == ' ' and was_space:
+        #        continue
+        #    elif c != ' ':
+        #        was_space = False
+        #    elif c == ' ' and not was_space:
+        #        was_space = True
+        #    chars.append(c)
+        #return "".join(chars).strip()
+
+        #chars = []
+        #was_space = True
+        #for c in string:
+        #    if (c == ' ' and was_space) or c == '\n' or c == '\r':
+        #        continue
+        #    elif c != ' ':
+        #        was_space = False
+        #    elif c == ' ' and not was_space:
+        #        was_space = True
+        #    chars.append(c)
+        #return "".join(chars).strip()
+
+        return " ".join(string.split())
+
 
     def __csv_filter(self, data: [], headlines: []) -> []:
         """
@@ -665,5 +693,5 @@ class TableStatistics:
                 if vacancies_table is not None:
                     InputConect.print_vacancies_table(vacancies_table)
 
-import doctest
-doctest.testfile("Table_statistics.py")
+#import doctest
+#doctest.testfile("Table_statistics.py")

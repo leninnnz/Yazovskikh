@@ -99,6 +99,11 @@ class Tests_DataSet_table_methods(unittest.TestCase):
         result = testData._DataSet_table__remove_white_spaces(" String        without  spaces    ")
         self.assertEqual(result, 'String without spaces')
 
+    def test_remove_white_spaces_string_sym(self):
+        testData = DataSet_table("vacancies.csv", [])
+        result = testData._DataSet_table__remove_white_spaces(" String\n without spaces    ")
+        self.assertEqual(result, 'String without spaces')
+
     def test_csv_filter_without_None(self):
         result = len(DataSet_table("vacancies.csv", [])._DataSet_table__csv_filter(
         [["NAME", "DESCRIPTION", "Python", "morethan6", "True", "EMPLOYER_NAME", "100", "2000", "True", "RUR",
