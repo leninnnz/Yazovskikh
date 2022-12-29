@@ -14,6 +14,7 @@ if __name__ == "__main__":
         data = DataSet(current_vacancy_name)
         file_names = data.csv_split_generator(file_name, folder_name)
         data.multi_proc_fill_dictionaries(file_names)
+        #data.concurrent_futures_fill_dictionaries(file_names)
         #data.fill_dictionaries(DataSet.csv_reader(file_name), current_vacancy_name)
         #data.calculate_vacancies_count()
         #data.fill_statistics_dictionaries()

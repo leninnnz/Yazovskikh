@@ -1,5 +1,5 @@
 import itertools
-
+import concurrent.futures as pool
 from Vacancy_class import Vacancy
 from multiprocessing import Pool
 import csv
@@ -144,6 +144,36 @@ class DataSet:
         args_multiproc = zip(file_names, itertools.repeat(self.__current))
         with Pool() as p:
             for file_name, year_statistics in zip(file_names, p.map(DataSet.get_statistics_for_year, args_multiproc)):
+                key = file_name.split('/')[1][0:4]
+                self.__vacancies_count += year_statistics["vacancies_count"]
+                self.__vacancies_count_by_year[key] = year_statistics["vacancies_count"]
+                self.__current_count_by_year[key] = year_statistics["current_count"]
+                self.__salaries_by_year[key] = year_statistics["salary"]
+                self.__current_salaries_by_year[key] = year_statistics["current_salary"]
+                for item in year_statistics["vacancies_count_by_town"].items():
+                    self.__vacancies_count_by_town[item[0]] = self.__vacancies_count_by_town.setdefault(item[0], 0) \
+                                                              + item[1]
+                for item in year_statistics["salaries_sum_by_town"].items():
+                    self.__sum_salaries_by_town[item[0]] = self.__sum_salaries_by_town.setdefault(item[0], 0) + item[1]
+
+        for key in self.__sum_salaries_by_town.keys():
+            if int(self.__vacancies_count_by_town[key] / self.__vacancies_count * 100) >= 1:
+                self.__salaries_by_town[key] = int(self.__sum_salaries_by_town[key] /
+                                                   self.__vacancies_count_by_town[key])
+
+        for key in self.__salaries_by_town:
+            self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
+
+    def concurrent_futures_fill_dictionaries(self, file_names: [str]):
+        """
+        Заполняет словари данными используя concurrent.futures
+        :param file_names: [str]
+            Названия файлов, из которых нужно брать данные
+        :return: void
+        """
+        args_multiproc = zip(file_names, itertools.repeat(self.__current))
+        with pool.ProcessPoolExecutor() as ex:
+            for file_name, year_statistics in zip(file_names, ex.map(DataSet.get_statistics_for_year, args_multiproc)):
                 key = file_name.split('/')[1][0:4]
                 self.__vacancies_count += year_statistics["vacancies_count"]
                 self.__vacancies_count_by_year[key] = year_statistics["vacancies_count"]
