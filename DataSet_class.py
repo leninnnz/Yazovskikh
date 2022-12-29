@@ -100,6 +100,31 @@ class DataSet:
         return data
 
     @staticmethod
+    def csv_split_generator(file_name: str):
+        """
+        Генерирует разделенный по годам CSV файлы с даннымии из исходного CSV файла
+        :param file_name: Название искодного CSV файла
+        :return: void
+        """
+        lines_by_year = {}
+        with open(file_name, "r", encoding="UTF-8-sig") as file:
+            file_reader = csv.DictReader(file, delimiter=",")
+            headlines_list = list(file_reader.fieldnames)
+            for line in file_reader:
+                key = line["published_at"][0:4]
+                if key not in lines_by_year.keys():
+                    lines_by_year[key] = []
+                lines_by_year[key].append(line.values())
+
+        for key in lines_by_year.keys():
+            new_file_name = "chunks/" + key + ".csv"
+            with open(new_file_name, 'w', newline='', encoding="UTF8") as new_file:
+                print(lines_by_year[key])
+                file_writer = csv.writer(new_file, delimiter=",")
+                file_writer.writerow(headlines_list)
+                file_writer.writerows(lines_by_year[key])
+
+    @staticmethod
     def parse_line_to_vacancy(line, headlines_list):
         """
         Преобразует строку из CSV файла в объект Vacancy
