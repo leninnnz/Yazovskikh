@@ -37,6 +37,10 @@ class DataSet:
         Доля вакансий в каждом городе
     __available_currencies: [str]
         Вакансии с частотностью более 5000
+    __currencies_data: pandas.DataFrame
+        Данные о курсах валют за все время
+    __data: pandas.DataFrame
+        Данные о вакансиях из CSV файла
     """
     def __init__(self, profession_name: str):
         """
@@ -59,25 +63,33 @@ class DataSet:
         self.__vacancies_rate_by_town = {}
 
         self.__available_currencies = None
+        self.__currencies_data = None
+        self.__line_data = None
 
     @property
     def vacancies_count(self):
         return self.__vacancies_count
+
     @property
     def salaries_by_year(self):
         return self.__salaries_by_year
+
     @property
     def vacancies_count_by_year(self):
         return self.__vacancies_count_by_year
+
     @property
     def current_salaries_by_year(self):
         return self.__current_salaries_by_year
+
     @property
     def current_count_by_year(self):
         return self.__current_count_by_year
+
     @property
     def salaries_by_town(self):
         return self.__salaries_by_town
+
     @property
     def vacancies_rate_by_town(self):
         return self.__vacancies_rate_by_town
@@ -100,29 +112,29 @@ class DataSet:
         currency_frequency = {}
         data = []
         with open(file_name, "r", encoding="UTF-8-sig") as file:
-            file_reader = csv.DictReader(file, delimiter=",")
-            headlines_list = list(file_reader.fieldnames)
-            for line in file_reader:
-                key = line["salary_currency"]
-                currency_frequency[key] = currency_frequency.setdefault(key, 0) + 1
-                vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
-                if vacancy is None:
-                    continue
-                oldest_date = vacancy.published_at if oldest_date is None or vacancy.published_at < oldest_date \
-                    else oldest_date
-                youngest_date = vacancy.published_at if youngest_date is None or vacancy.published_at > youngest_date \
-                    else youngest_date
-                data.append(vacancy)
+             file_reader = csv.DictReader(file, delimiter=",")
+             headlines_list = list(file_reader.fieldnames)
+             for line in file_reader:
+                 key = line["salary_currency"]
+                 currency_frequency[key] = currency_frequency.setdefault(key, 0) + 1
+                 #vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
+                 #if vacancy is None:
+                     #continue
+                 oldest_date = line["published_at"] if oldest_date is None or line["published_at"] < oldest_date \
+                     else oldest_date
+                 youngest_date = line["published_at"] if youngest_date is None or line["published_at"] > youngest_date \
+                     else youngest_date
+                 data.append(line)
 
         self.__available_currencies = \
             [item[0] for item in currency_frequency.items() if item[1] >= 5000 and item[0] != '']
 
-        #data = list(filter(lambda v: v.salary_currency in self.available_currencies, data))
+        self.__line_data = list(filter(lambda v: v['salary_currency'] in self.available_currencies, data))
         return (oldest_date, youngest_date)
 
     def generate_currency(self, oldest_date: str, youngest_date: str):
         """
-        Генерирует CSV файл с курсами всех валют за указанный период
+        Генерирует dataframe с курсами всех валют за указанный период
         :param oldest_date: str
             Дата начала периода
         :param youngest_date: str
@@ -142,7 +154,7 @@ class DataSet:
                 if row is None:
                     continue
                 df.loc[len(df.index)] = row
-        df.to_csv("currency.csv")
+        self.__currencies_data = df
 
     def get_row(self, month: str, year: str):
         """
@@ -177,6 +189,52 @@ class DataSet:
         except Exception:
             return None
 
+    def get_vacancies_data(self) -> [Vacancy]:
+        """
+        Возвращает список объектов вакансий полученных из данных
+        :return: [Vacancy]
+            Список вакансий
+        """
+        vacancies = []
+        for line in self.__line_data:
+            salary = self.get_salary(line)
+            if salary is not None:
+                line['salary'] = salary
+                vacancies.append(Vacancy(line))
+        return vacancies
+
+    def get_salary(self, line: {str: str}):
+        """
+        Возвращает значение зарплаты полученных из полей 'salary_from', 'salary_to', 'salary_currency'
+        :param line: {str: str}
+            Вакансия в виде словаря для получения данных
+        :return: str/None
+            Зарплату в рублях или None при отсутствующих данных
+        """
+        salary_num = ''
+        if line['salary_from'] == '' and line['salary_to'] == '':
+            return None
+        if line['salary_from'] != '' and line['salary_to'] == '':
+            salary_num = line['salary_from']
+        if line['salary_from'] == '' and line['salary_to'] != '':
+            salary_num = line['salary_to']
+        if line['salary_from'] != '' and line['salary_to'] != '':
+            salary_num = str(int((float(line['salary_from']) + float(line['salary_to']))/2))
+
+        if line['salary_currency'] == 'RUR':
+            return salary_num
+        elif line['salary_currency'] != '':
+            date = line['published_at']
+            date_key = date[0:4] + '-' + date[5:7]
+            try:
+                rate = float(self.__currencies_data[self.__currencies_data['date'] ==
+                                                    date_key][line['salary_currency']])
+                salary = str(int(float(salary_num) * rate))
+            except:
+                return None
+            return salary
+        return None
+
     @staticmethod
     def csv_reader(file_name: str) -> []:
         """
@@ -195,6 +253,7 @@ class DataSet:
                 if vacancy is not None:
                     data.append(vacancy)
         return data
+
     @staticmethod
     def csv_split_generator(file_name: str, folder_name: str):
         """
@@ -224,6 +283,7 @@ class DataSet:
                 file_writer.writerow(headlines_list)
                 file_writer.writerows(lines_by_year[key])
         return file_names
+
     def multi_proc_fill_dictionaries(self, file_names: [str]):
         """
         Заполняет словари данными используя multiprocessing
@@ -251,6 +311,7 @@ class DataSet:
                                                    self.__vacancies_count_by_town[key])
         for key in self.__salaries_by_town:
             self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
+
     def concurrent_futures_fill_dictionaries(self, file_names: [str]):
         """
         Заполняет словари данными используя concurrent.futures
@@ -278,6 +339,7 @@ class DataSet:
                                                    self.__vacancies_count_by_town[key])
         for key in self.__salaries_by_town:
             self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
+
     @staticmethod
     def get_statistics_for_year(tuple_args):
         """
@@ -332,7 +394,7 @@ class DataSet:
             return Vacancy(vacancy_dict)
         return None
 
-    def fill_dictionaries(self, data: [Vacancy], current_vacancy_name: str):
+    def fill_dictionaries(self, data: [Vacancy]):
         """
         Заполняет словари с данными
         :param data: [Vacancy]
@@ -350,16 +412,18 @@ class DataSet:
                 self.__vacancies_count_by_town.setdefault(vacancy.area_name, 0) + 1
             self.__sum_salaries_by_town[vacancy.area_name] = \
                 self.__sum_salaries_by_town.setdefault(vacancy.area_name, 0) + vacancy.average_ru_salary
-            if current_vacancy_name in vacancy.name:
+            if self.__current in vacancy.name:
                 self.__current_count_by_year[key] = self.__current_count_by_year.setdefault(key, 0) + 1
                 self.__current_sum_salary_by_year[key] = \
                     self.__current_sum_salary_by_year.setdefault(key, 0) + vacancy.average_ru_salary
+
     def calculate_vacancies_count(self):
         """
         Считает общее количество вакансий в данных
         :return: void
         """
         self.__vacancies_count = sum(self.__vacancies_count_by_town.values())
+
     def fill_statistics_dictionaries(self):
         """
         Заполняет словари со статистикой используя словари с данными
@@ -379,6 +443,7 @@ class DataSet:
                                                    self.__vacancies_count_by_town[key])
         for key in self.__salaries_by_town:
             self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
+
     def print_statistics_dictionaries(self):
         """
         Выводит все словари со статистикой

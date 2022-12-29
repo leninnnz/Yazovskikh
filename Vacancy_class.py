@@ -37,11 +37,12 @@ class Vacancy:
             Входящий словарь со всей информацией для инициализации объекта
         """
         self.__name = vacancy_dict['name']
-        self.__salary_from = float(vacancy_dict['salary_from'])
-        self.__salary_to = float(vacancy_dict['salary_to'])
-        self.__salary_currency = vacancy_dict['salary_currency']
+        #self.__salary_from = float(vacancy_dict['salary_from'])
+        #self.__salary_to = float(vacancy_dict['salary_to'])
+        #self.__salary_currency = vacancy_dict['salary_currency']
         self.__area_name = vacancy_dict['area_name']
         self.__published_at = vacancy_dict['published_at']
+        self.__salary = float(vacancy_dict['salary'])
 
     @property
     def name(self) -> str:
@@ -51,29 +52,29 @@ class Vacancy:
     def name(self, value: str):
         self.__name = value
 
-    @property
-    def salary_from(self) -> float:
-        return self.__salary_from
-
-    @salary_from.setter
-    def salary_from(self, value: str):
-        self.__salary_from = value
-
-    @property
-    def salary_to(self) -> float:
-        return self.__salary_to
-
-    @salary_to.setter
-    def salary_to(self, value: str):
-        self.__salary_to = value
-
-    @property
-    def salary_currency(self) -> str:
-        return self.__salary_currency
-
-    @salary_currency.setter
-    def salary_currency(self, value: str):
-        self.__salary_currency = value
+    # @property
+    # def salary_from(self) -> float:
+    #     return self.__salary_from
+    #
+    # @salary_from.setter
+    # def salary_from(self, value: str):
+    #     self.__salary_from = value
+    #
+    # @property
+    # def salary_to(self) -> float:
+    #     return self.__salary_to
+    #
+    # @salary_to.setter
+    # def salary_to(self, value: str):
+    #     self.__salary_to = value
+    #
+    # @property
+    # def salary_currency(self) -> str:
+    #     return self.__salary_currency
+    #
+    # @salary_currency.setter
+    # def salary_currency(self, value: str):
+    #     self.__salary_currency = value
 
     @property
     def area_name(self) -> str:
@@ -97,4 +98,5 @@ class Vacancy:
 
     @property
     def average_ru_salary(self):
-        return (self.__salary_from + self.__salary_to) / 2 * currency_to_rub[self.__salary_currency]
+        return self.__salary
+        #return (self.__salary_from + self.__salary_to) / 2 * currency_to_rub[self.__salary_currency]
