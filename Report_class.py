@@ -145,15 +145,15 @@ class Report:
         plt.figure(figsize=(100, 100))
         fig, axs = plt.subplots(2, 2)
 
-        self.__generate_salary_by_year_graph(data, axs[0, 0],current_vacancy_name)
-        self.__generate_count_by_year_graph(data, axs[0, 1], current_vacancy_name)
+        self.__generate_salary_by_year_for_town_graph(data, axs[0, 0], current_vacancy_name)
+        self.__generate_count_by_year_for_town_graph(data, axs[0, 1], current_vacancy_name)
         self.__generate_salary_by_town_graph(salaries_by_town, axs)
         self.__generate_rates_by_town_graph(rates_by_town, axs)
 
         fig.tight_layout()
         fig.savefig('graph.png')
 
-    def generate_cut_image(self, data: DataSet) -> str:
+    def generate_town_image(self, data: DataSet) -> str:
         """
         Генерирует png изображение с графиками построенными на основе данных
         :param data: DataSet
@@ -164,17 +164,24 @@ class Report:
         matplotlib.rc('xtick', labelsize=8)
         matplotlib.rc('xtick', labelsize=8)
         plt.figure(figsize=(100, 100))
-        fig, axs = plt.subplots(2)
+        fig, axs = plt.subplots(2,2)
 
-        self.__generate_salary_by_year_graph(data, axs[0], data.current)
-        self.__generate_count_by_year_graph(data, axs[1], data.current)
+        sorted_salaries_by_town = dict(
+            sorted(data.salaries_by_town.items(), key=lambda item: item[1], reverse=True)[0:10])
+        sorted_vacancies_by_rate = dict(sorted(data.vacancies_rate_by_town.items(),
+                                               key=lambda item: item[1], reverse=True)[0:10])
 
-        file_name = 'cut_graph.png'
+        self.__generate_salary_by_year_for_town_graph(data, axs[0, 0], data.current)
+        self.__generate_count_by_year_for_town_graph(data, axs[0, 1], data.current)
+        self.__generate_salary_by_town_graph(sorted_salaries_by_town, axs[1, 0])
+        self.__generate_rates_by_town_graph(sorted_vacancies_by_rate, axs[1, 1])
+
+        file_name = 'town_graph.png'
         fig.tight_layout()
         fig.savefig(file_name)
-        return  file_name
+        return file_name
 
-    def __generate_salary_by_year_graph(self, data: DataSet, ax, current_vacancy_name: str):
+    def __generate_salary_by_year_for_town_graph(self, data: DataSet, ax, current_vacancy_name: str):
         """
         Создает график показывающий динамику зарплат по годам
         :param data: DataSet
@@ -188,12 +195,12 @@ class Report:
         x = list(map(lambda year: int(year), data.salaries_by_year.keys()))
         ax.bar(list(map(lambda c: c - 0.35, x)), data.salaries_by_year.values(), width=0.35, label="средняя з/п")
         ax.bar(x, data.current_salaries_by_year.values(), width=0.35, label="з/п " + current_vacancy_name)
-        ax.set_title('Уровень зарплат по годам')
+        ax.set_title(f'Уровень зарплат по годам \n {data.current}({data.region})')
         ax.set_xticks(x, data.salaries_by_year.keys(), rotation=90, fontsize=8)
         ax.legend(fontsize=8)
         ax.grid(axis='y')
 
-    def __generate_count_by_year_graph(self, data: DataSet, ax, current_vacancy_name: str):
+    def __generate_count_by_year_for_town_graph(self, data: DataSet, ax, current_vacancy_name: str):
         """
         Создает график показывающий динамику количества вакансий по годам
         :param data: DataSet
@@ -209,12 +216,12 @@ class Report:
                       width=0.35, label="Количество вакансий")
         ax.bar(x, data.current_count_by_year.values(),
                       width=0.35, label="Количество вакансий " + current_vacancy_name)
-        ax.set_title('Количество вакансий по годам')
+        ax.set_title(f'Количество вакансий по годам \n {data.current}({data.region})')
         ax.set_xticks(x, data.vacancies_count_by_year.keys(), rotation=90, fontsize=8)
         ax.legend(fontsize=8)
         ax.grid(axis='y')
 
-    def __generate_salary_by_town_graph(self, salaries_by_town: {str: float}, axs):
+    def __generate_salary_by_town_graph(self, salaries_by_town: {str: float}, ax):
         """
         Создает график распределения зарплат по городам
         :param salaries_by_town: {str: float}
@@ -224,14 +231,14 @@ class Report:
         :return: void
         """
         x = list(map(lambda town: town.replace(" ", "\n").replace("-", "-\n"), salaries_by_town.keys()))
-        axs[1, 0].barh(x, salaries_by_town.values(), align='center')
-        axs[1, 0].set_title('Уровень зарплат по городам')
-        axs[1, 0].set_yticks(range(10))
-        axs[1, 0].set_yticklabels(x, fontsize=6)
-        axs[1, 0].grid(axis='x')
-        axs[1, 0].invert_yaxis()
+        ax.barh(x, salaries_by_town.values(), align='center')
+        ax.set_title('Уровень зарплат по городам')
+        ax.set_yticks(range(10))
+        ax.set_yticklabels(x, fontsize=6)
+        ax.grid(axis='x')
+        ax.invert_yaxis()
 
-    def __generate_rates_by_town_graph(self, rates_by_town: {str: float}, axs):
+    def __generate_rates_by_town_graph(self, rates_by_town: {str: float}, ax):
         """
         Создает график показывающий доли вакансий в разных городах
         :param rates_by_town: {str: float}
@@ -242,8 +249,8 @@ class Report:
         """
         values = [1 - sum(rates_by_town.values())] + list(rates_by_town.values())
         labels = ["Другие"] + list(rates_by_town.keys())
-        params_tuple = axs[1, 1].pie(values, labels=labels)
-        axs[1, 1].set_title('Доля вакансий по городам')
+        params_tuple = ax.pie(values, labels=labels)
+        ax.set_title('Доля вакансий по городам')
         [_.set_fontsize(6) for _ in params_tuple[1]]
 
     def generate_pdf(self, current_vacancy_name: str, image_file: str, tables_file: str):
@@ -268,8 +275,8 @@ class Report:
         years_headlines = years_table[1]
         years_values = [row for row in years_table if row != years_table[1]]
 
-        self.__fill_towns_table(xfile, towns_salaries_headlines, towns_rates_headlines,
-                                towns_salaries_values, towns_rates_values)
+        self.__get_towns_table(xfile, towns_salaries_headlines, towns_rates_headlines,
+                               towns_salaries_values, towns_rates_values)
 
         pdf_template = template.render({'vacancy_name': current_vacancy_name, 'image_file': image_file,
                                         'years_headlines': years_headlines, 'years_values': years_values,
@@ -281,7 +288,7 @@ class Report:
         options = {'enable-local-file-access': None}
         pdfkit.from_string(pdf_template, 'report.pdf', configuration=config, options=options)
 
-    def generate_cut_pdf(self, data: DataSet, image_file: str):
+    def generate_town_pdf(self, data: DataSet, image_file: str):
         """
         Генерирует отчет в виде PDF файла используя готовые файлы графиков
         :param data: DataSet
@@ -291,55 +298,46 @@ class Report:
         :return: void
         """
         env = Environment(loader=FileSystemLoader('.'))
-        template = env.get_template("cut_pdf_template.html")
+        template = env.get_template("town_pdf_template.html")
 
-        years_headlines, years_values = [], []
+        years_headlines, years_values, towns_salaries_headlines, \
+            towns_rates_headlines = [], [], [], []
 
-        years_headlines = ['Год', 'Средняя зарплата', f'Средняя зарплата - {data.current}', 'Количество вакансий',
-                           f'Количество вакансий {data.current}']
-        for year in data.salaries_by_year.keys():
-            years_values.append([year, data.salaries_by_year[year], data.current_salaries_by_year[year],
-                                 data.vacancies_count_by_year[year], data.current_count_by_year[year]])
-            print(years_values[-1])
+        years_headlines = ['Год', f'Средняя зарплата - {data.current}({data.region})',
+                           f'Количество вакансий {data.current}({data.region})']
+
+        for year in data.salaries_by_year_for_town.keys():
+            years_values.append([year, data.salaries_by_year_for_town[year], data.count_by_year_for_town[year]])
+
+        towns_salaries_headlines = ['Город', 'Уровень зарплат']
+        towns_rates_headlines = ['Город', 'Доля вакансий']
+
+        towns_tables = self.__get_towns_table(data)
 
         pdf_template = template.render({'vacancy_name': data.current, 'image_file': image_file,
-                                        'years_headlines': years_headlines, 'years_values': years_values})
+                                        'years_headlines': years_headlines, 'years_values': years_values,
+                                        'towns_salaries_headlines': towns_salaries_headlines,
+                                        'towns_salaries_values': towns_tables[0],
+                                        'towns_rates_headlines': towns_rates_headlines,
+                                        'towns_rates_values': towns_tables[1]})
         config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
         options = {'enable-local-file-access': None}
-        pdfkit.from_string(pdf_template, 'cut_report.pdf', configuration=config, options=options)
+        pdfkit.from_string(pdf_template, 'town_report.pdf', configuration=config, options=options)
 
-    def __fill_towns_table(self, xfile, towns_salaries_headlines: [str],
-                           towns_rates_headlines: [str], towns_salaries_values: [float], towns_rates_values: [float]):
+    def __get_towns_table(self, data: DataSet):
         """
         Заполняет таблицу данными для вставки в html шаблон
-        :param xfile: WorkBook
-            Открытый Excel WorkBook для получения данных из ячеек
-        :param towns_salaries_headlines: [str]
-            Список заголовков для таблицы распределения зарплат по городам
-        :param towns_rates_headlines: [str]
-            Список заколовков для таблицы долей по городам
-        :param towns_salaries_values: [float]
-            Список значений для таблицы распределения зарплат по городам
-        :param towns_rates_values: [float]
-            Список значений для таблицы долей по городам
-        :return: void
+        :param data: DataSet
+            Датасет со всей информацией
+        :return: ([[str]], [[str]])
+            Возвращает кортеж со списками строк для таблиц
         """
-        town_table = xfile["Статистика по городам"]
-        for row in town_table:
-            salaries_value_row = []
-            rates_value_row = []
-            for cell in row:
-                if cell.row == 1:
-                    if cell.column == 1 or cell.column == 2:
-                        towns_salaries_headlines.append(cell)
-                    elif cell.column == 4 or cell.column == 5:
-                        towns_rates_headlines.append(cell)
-                else:
-                    if cell.column == 1 or cell.column == 2:
-                        salaries_value_row.append(cell)
-                    elif cell.column == 4 or cell.column == 5:
-                        rates_value_row.append(cell)
-            if len(salaries_value_row) != 0:
-                towns_salaries_values.append(salaries_value_row)
-            if len(rates_value_row) != 0:
-                towns_rates_values.append(rates_value_row)
+        sorted_salaries_by_town = dict(
+            sorted(data.salaries_by_town.items(), key=lambda item: item[1], reverse=True)[0:10])
+        sorted_vacancies_by_rate = dict(sorted(data.vacancies_rate_by_town.items(),
+                                               key=lambda item: item[1], reverse=True)[0:10])
+
+        towns_salaries_values = [[item[0], item[1]] for item in sorted_salaries_by_town.items()]
+        towns_rates_values = [[item[0], item[1]] for item in sorted_vacancies_by_rate.items()]
+
+        return (towns_salaries_values, towns_rates_values)

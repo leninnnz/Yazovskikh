@@ -42,12 +42,21 @@ class DataSet:
         Данные о курсах валют за все время
     __data: pandas.DataFrame
         Данные о вакансиях из CSV файла
+    __region: str
+        Название интересующего нас региона
+    __salaries_by_year_for_town: {str: int}
+        Словарь сопоставляющий средюю зарплату для интересующией нас профессии, интересующего нас региона каждому году
+    __count_by_year_for_town: {str: int}
+        Словарь сопоставляющий количество вакансий для интересующией
+        нас профессии, интересующего нас региона каждому году
     """
-    def __init__(self, profession_name: str):
+    def __init__(self, profession_name: str, region_name: str):
         """
         Инициализирует объект
         :param profession_name: str
             задает название искомой профессии
+        :param region_name: str
+            задает название скомого региона
         :return: void
         """
         self.__vacancies_count_by_year = {}
@@ -56,18 +65,21 @@ class DataSet:
         self.__current_sum_salary_by_year = {}
         self.__vacancies_count_by_town = {}
         self.__sum_salaries_by_town = {}
+
         self.__vacancies_count = 0
         self.__current = profession_name
+        self.__region = region_name
 
         self.__salaries_by_year = {}
         self.__current_salaries_by_year = {}
         self.__salaries_by_town = {}
         self.__vacancies_rate_by_town = {}
+        self.__salaries_by_year_for_town = {}
+        self.__count_by_year_for_town = {}
 
         self.__available_currencies = None
         self.__currencies_data = None
         self.__line_data = None
-        self.__data_by_year = {}
 
     @property
     def vacancies_count(self):
@@ -104,6 +116,16 @@ class DataSet:
     @property
     def current(self):
         return self.__current
+    @property
+    def region(self):
+        return self.__region
+
+    @property
+    def salaries_by_year_for_town(self):
+        return self.__salaries_by_year_for_town
+    @property
+    def count_by_year_for_town(self):
+        return self.__count_by_year_for_town
 
     def load_data_from_hh(self):
         """
@@ -277,6 +299,10 @@ class DataSet:
                 year_vacancies[year_vacancies['name'].str.contains(self.__current.lower(), case=False)]
             self.__current_salaries_by_year[year] = int(np.average(current_year_vacancies['salary']))
             self.__current_count_by_year[year] = len(current_year_vacancies)
+
+            town_current_year_vacancies = current_year_vacancies[current_year_vacancies['area_name'] == self.__region]
+            self.__salaries_by_year_for_town[year] = int(np.average(town_current_year_vacancies['salary']))
+            self.__count_by_year_for_town[year] = len(town_current_year_vacancies)
 
             town_year_vacancies = year_vacancies.groupby(['area_name']).size().reset_index(name='count')
             for _, row in town_year_vacancies.iterrows():
