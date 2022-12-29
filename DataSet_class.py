@@ -98,6 +98,53 @@ class DataSet:
     def available_currencies(self):
         return self.__available_currencies
 
+    def load_data_from_hh(self):
+        """
+        Загружает информацию о вакансиях с сайта hh.ru и сохраняет их в CSV файл
+        :return: void
+        """
+        df = pd.DataFrame(columns=['name', 'salary_from', 'salary_to', 'salary_currency', 'area_name', 'published_at'])
+        for hour in range(0, 24, 6):
+            url = f'https://api.hh.ru/vacancies?specialization=1&date_from=2022-12-01T{("0" + str(hour))[-2:]}:00:00' \
+                  f'&date_to=2022-12-' \
+                  f'{("0" + str(1 + ((hour + 6) // 24)))[-2:]}T{("0" + str((hour + 6) % 24))[-2:]}:00:00'
+            response = requests.get(url)
+            if(response.status_code != 200):
+                print('Error')
+                response = requests.get(url)
+            result = response.json()
+            for page_num in range(result['pages']):
+                url = url + f'&page={page_num}'
+                page_response = requests.get(url)
+                if (page_response.status_code != 200):
+                    print('Error')
+                    page_response = requests.get(url)
+                for vacancy in page_response.json()['items']:
+                    df.loc[len(df.index)] = self.__parse_json(vacancy)
+        df.to_csv('hh_unloading.csv')
+
+    def __parse_json(self, json) -> [str]:
+        """
+        Метод отбирает информацию из json формата и переводит в список значений
+        :param json: {}
+            Вакансия в виде словаря, json формате
+        :return: [str]
+            Все необходимые для вакансии данные
+        """
+        salary_from = None
+        salary_to = None
+        salary_currency = None
+        area_name = None
+        if json['salary'] is not None:
+            salary_from = json['salary']['from']
+            salary_to = json['salary']['to']
+            salary_currency = json['salary']['currency']
+        if json['area'] is not None:
+            area_name = json['area']['name']
+
+        return [json['name'], str(salary_from), str(salary_to), salary_currency, area_name, json['published_at']]
+
+
     def currency_frequency_reader(self, file_name: str) -> (str, str):
         """
         Считывает CSV файл, а также берет всю нужную информацию
@@ -113,13 +160,9 @@ class DataSet:
         data = []
         with open(file_name, "r", encoding="UTF-8-sig") as file:
              file_reader = csv.DictReader(file, delimiter=",")
-             headlines_list = list(file_reader.fieldnames)
              for line in file_reader:
                  key = line["salary_currency"]
                  currency_frequency[key] = currency_frequency.setdefault(key, 0) + 1
-                 #vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
-                 #if vacancy is None:
-                     #continue
                  oldest_date = line["published_at"] if oldest_date is None or line["published_at"] < oldest_date \
                      else oldest_date
                  youngest_date = line["published_at"] if youngest_date is None or line["published_at"] > youngest_date \
@@ -150,13 +193,13 @@ class DataSet:
             for month in range(1, 13):
                 if (year == first_year and month < first_month) or (year == last_year and month > last_month):
                     continue
-                row = self.get_row(month, year)
+                row = self.__get_row(month, year)
                 if row is None:
                     continue
                 df.loc[len(df.index)] = row
         self.__currencies_data = df
 
-    def get_row(self, month: str, year: str):
+    def __get_row(self, month: str, year: str):
         """
         Возвращает список с курсами валют за указанный отрезок времени
         :param month: str
