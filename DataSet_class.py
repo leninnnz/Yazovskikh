@@ -3,6 +3,9 @@ import concurrent.futures as pool
 from Vacancy_class import Vacancy
 from multiprocessing import Pool
 import csv
+import pandas as pd
+import requests
+from xml.etree import ElementTree
 
 
 class DataSet:
@@ -33,6 +36,8 @@ class DataSet:
         Зарплаты по городам
     __vacancies_rate_by_town: {str: float}
         Доля вакансий в каждом городе
+    __available_currencies: [str]
+        Вакансии с частотностью более 5000
     """
     def __init__(self, profession_name: str):
         """
@@ -55,6 +60,8 @@ class DataSet:
         self.__current_salaries_by_year = {}
         self.__salaries_by_town = {}
         self.__vacancies_rate_by_town = {}
+
+        self.__available_currencies = None
 
     @property
     def vacancies_count(self):
@@ -83,6 +90,101 @@ class DataSet:
     @property
     def vacancies_rate_by_town(self):
         return self.__vacancies_rate_by_town
+
+    @property
+    def available_currencies(self):
+        return self.__available_currencies
+
+    def currency_frequency_reader(self, file_name: str) -> (str, str):
+        """
+        Считывает CSV файл, а также берет всю нужную информацию
+        (крайние даты вакансий, валюты с нужной частотностью, вакансии с допустимыми валютами)
+        :param file_name: str
+            Название CSV файла
+        :return: (str, str)
+            Кортеж состоящий из крайних дат
+        """
+        oldest_date = None
+        youngest_date = None
+        currency_frequency = {}
+        data = []
+        with open(file_name, "r", encoding="UTF-8-sig") as file:
+            file_reader = csv.DictReader(file, delimiter=",")
+            headlines_list = list(file_reader.fieldnames)
+            for line in file_reader:
+                key = line["salary_currency"]
+                currency_frequency[key] = currency_frequency.setdefault(key, 0) + 1
+                vacancy = DataSet.parse_line_to_vacancy(line, headlines_list)
+                if vacancy is None:
+                    continue
+                oldest_date = vacancy.published_at if oldest_date is None or vacancy.published_at < oldest_date \
+                    else oldest_date
+                youngest_date = vacancy.published_at if youngest_date is None or vacancy.published_at > youngest_date \
+                    else youngest_date
+                data.append(vacancy)
+
+        self.__available_currencies = \
+            [item[0] for item in currency_frequency.items() if item[1] >= 5000 and item[0] != '']
+
+        #data = list(filter(lambda v: v.salary_currency in self.available_currencies, data))
+        return (oldest_date, youngest_date)
+
+    def generate_currency(self, oldest_date: str, youngest_date: str):
+        """
+        Генерирует CSV файл с курсами всех валют за указанный период
+        :param oldest_date: str
+            Дата начала периода
+        :param youngest_date: str
+            Дата окончания периода
+        :return: Void
+        """
+        first_year = int(oldest_date[0:4])
+        first_month = int(oldest_date[5:7])
+        last_year = int(youngest_date[0:4])
+        last_month = int(youngest_date[5:7])
+        df = pd.DataFrame(columns=['date'] + self.__available_currencies)
+        for year in range(first_year, last_year + 1):
+            for month in range(1, 13):
+                if (year == first_year and month < first_month) or (year == last_year and month > last_month):
+                    continue
+                row = self.get_row(month, year)
+                if row is None:
+                    continue
+                df.loc[len(df.index)] = row
+        df.to_csv("currency.csv")
+
+    def get_row(self, month: str, year: str):
+        """
+        Возвращает список с курсами валют за указанный отрезок времени
+        :param month: str
+            Интересующий месяц
+        :param year: str
+            Интересующий год
+        :return: [str/None]/None
+            Список с курсами валют или None если информация недоступна
+        """
+        try:
+            format_month = ('0' + str(month))[-2:]
+            url = f'http://www.cbr.ru/scripts/XML_daily.asp?date_req=02/{format_month}/{year}'
+            res = requests.get(url)
+            tree = ElementTree.fromstring(res.content)
+            row = [f'{year}-{format_month}']
+            for val in self.__available_currencies:
+                if val == "RUR":
+                    row.append(1)
+                    continue
+                founded = False
+                for valute in tree:
+                    if valute[1].text == val:
+                        row.append(round(float(valute[4].text.replace(',', '.'))
+                                         /float(valute[2].text.replace(',', '.')), 6))
+                        founded = True
+                        break
+                if not founded:
+                    row.append(None)
+            return row
+        except Exception:
+            return None
 
     @staticmethod
     def csv_reader(file_name: str) -> []:
@@ -231,7 +333,6 @@ class DataSet:
         year_statistics["salary"] = int(vacancies_salaries_sum / year_statistics["vacancies_count"])
         year_statistics["current_salary"] = int(current_salaries_sum / year_statistics["current_count"])
         return year_statistics
-
     @staticmethod
     def parse_line_to_vacancy(line, headlines_list):
         """
