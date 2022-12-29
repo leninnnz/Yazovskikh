@@ -15,7 +15,7 @@ class DataSet:
     DataSet - класс, который хранит все данные из CSV файлов в виде словарей
     Атрибуты (все атрибуты имеют сеттеры)
     ------------------------------------------------------------------------
-    __vacancies_count_by_year: {int: int}
+    __vacancies_count_by_year: pandas.Dataframe
         Количество вакансий по годам
     __sum_salaries_by_year: {int: float}
         Сумма всех зарплат по годам
@@ -23,19 +23,19 @@ class DataSet:
         Количество факансий для интересующей нас профессии по годам
     __current_sum_salary_by_year: {int: float}
         Сумма всех зарплат для интересующей нас професси по годам
-    __vacancies_count_by_town: {str: int}
+    __vacancies_count_by_town: pandas.Dataframe
         Количество вакансий по городам
     __vacancies_count: int (default=0)
         Общее число вакансий
     __current: str
         Название интересующей нас профессии
-    __salaries_by_year: {int: float}
+    __salaries_by_year: pandas.Dataframe
         Зарплаты по годам
-    __current_salaries_by_year: {int: float}
+    __current_salaries_by_year: pandas.Dataframe
         Зарплаты по годам для интересующей нас профессии
-    __salaries_by_town: {str: float}
+    __salaries_by_town: pandas.Dataframe
         Зарплаты по городам
-    __vacancies_rate_by_town: {str: float}
+    __vacancies_rate_by_town: pandas.Dataframe
         Доля вакансий в каждом городе
     __available_currencies: [str]
         Вакансии с частотностью более 5000
@@ -51,7 +51,7 @@ class DataSet:
         Словарь сопоставляющий количество вакансий для интересующией
         нас профессии, интересующего нас региона каждому году
     """
-    def __init__(self, profession_name: str, region_name: str):
+    def __init__(self, profession_name: str):
         """
         Инициализирует объект
         :param profession_name: str
@@ -69,7 +69,6 @@ class DataSet:
 
         self.__vacancies_count = 0
         self.__current = profession_name
-        self.__region = region_name
 
         self.__salaries_by_year = {}
         self.__current_salaries_by_year = {}
@@ -117,9 +116,6 @@ class DataSet:
     @property
     def current(self):
         return self.__current
-    @property
-    def region(self):
-        return self.__region
 
     @property
     def salaries_by_year_for_town(self):
@@ -296,7 +292,7 @@ class DataSet:
         cur.execute("""CREATE TABLE IF NOT EXISTS vacancies(
                         name varchar(100),
                         area_name varchar(50),
-                        published_at varchar(50),
+                        published_at datetime,
                         salary money)
                     """)
         cur.execute("""DELETE FROM vacancies""")
@@ -305,43 +301,55 @@ class DataSet:
                     """)
         cur.execute("""DROP TABLE raw_vacancies""")
         con.commit()
+        con.close()
 
-    def fill_dictionaries_by_pandas(self):
+    def fill_dataframes_by_sql(self):
         """
-        Заполняет словари со статистикой используя Pandas
+        Заполняет все dataframe-ы со статистикой используя SQL-запросы
         :return:
         """
-        self.__vacancies_count = len(self.__line_data)
-        for year in range(2003, 2023):
-            year_vacancies = self.__line_data[self.__line_data['published_at'].str[0:4] == str(year)]
-            self.__salaries_by_year[year] = int(np.average(year_vacancies['salary']))
-            self.__vacancies_count_by_year[year] = len(year_vacancies)
 
-            current_year_vacancies =\
-                year_vacancies[year_vacancies['name'].str.contains(self.__current.lower(), case=False)]
-            self.__current_salaries_by_year[year] = int(np.average(current_year_vacancies['salary']))
-            self.__current_count_by_year[year] = len(current_year_vacancies)
+        con = sl.connect('bd.sqlite')
 
-            town_current_year_vacancies = current_year_vacancies[current_year_vacancies['area_name'] == self.__region]
-            self.__salaries_by_year_for_town[year] = int(np.average(town_current_year_vacancies['salary']))
-            self.__count_by_year_for_town[year] = len(town_current_year_vacancies)
-
-            town_year_vacancies = year_vacancies.groupby(['area_name']).size().reset_index(name='count')
-            for _, row in town_year_vacancies.iterrows():
-                key = row['area_name']
-                self.__vacancies_count_by_town[key] = self.__vacancies_count_by_town.setdefault(key, 0) + row['count']
-
-            town_salaries = year_vacancies[['area_name', 'salary']].groupby(by=['area_name']).sum().reset_index()
-            for _, row in town_salaries.iterrows():
-                key = row['area_name']
-                self.__sum_salaries_by_town[key] = self.__sum_salaries_by_town.setdefault(key, 0) + row['salary']
-
-        for key in self.__sum_salaries_by_town.keys():
-            if int(self.__vacancies_count_by_town[key] / self.__vacancies_count * 100) >= 1:
-                self.__salaries_by_town[key] = int(self.__sum_salaries_by_town[key] /
-                                                   self.__vacancies_count_by_town[key])
-        for key in self.__salaries_by_town:
-            self.__vacancies_rate_by_town[key] = round(self.__vacancies_count_by_town[key] / self.__vacancies_count, 4)
+        # strftime не работает
+        self.__salaries_by_year = pd.read_sql("""SELECT SUBSTR(published_at, 1, 4) as 'Год', 
+                                                        ROUND(AVG(salary), 2) as 'Средняя з\п'
+                                                    from vacancies
+                                                    group by SUBSTR(published_at, 1, 4)      
+                                              """, con)
+        self.__vacancies_count_by_year = pd.read_sql("""SELECT SUBSTR(published_at, 1, 4) as 'Год',
+                                                                COUNT(*) as 'Кол-во вакансий'
+                                                            from vacancies
+                                                            group by SUBSTR(published_at, 1, 4)
+                                                      """, con)
+        self.__current_salaries_by_year = pd.read_sql(f"""SELECT SUBSTR(published_at, 1, 4) as 'Год',
+                                                            ROUND(AVG(salary), 2) as 'Средняя з\п {self.__current}'
+                                                            from vacancies 
+                                                            where lower(name) LIKE '%{self.__current.lower()}%'
+                                                            group by SUBSTR(published_at, 1, 4)      
+                                                       """, con)
+        self.__current_count_by_year = pd.read_sql(f"""SELECT SUBSTR(published_at, 1, 4) as 'Год',
+                                                            COUNT(*) as 'Кол-во вакансий {self.__current}'
+                                                            from vacancies 
+                                                            where lower(name) LIKE '%{self.__current.lower()}%'
+                                                            group by SUBSTR(published_at, 1, 4)      
+                                                       """, con)
+        self.__salaries_by_town = pd.read_sql("""SELECT area_name as 'Город',  ROUND(AVG(salary), 2) as 'Средняя з\п'
+                                                 from vacancies 
+                                                 group by area_name
+                                                 having COUNT(*) >= (SELECT COUNT(*) FROM vacancies) / 100
+                                                 ORDER BY ROUND(AVG(salary), 2) DESC 
+                                                 LIMIT 10
+                                              """, con)
+        self.__vacancies_rate_by_town = pd.read_sql("""SELECT area_name as 'Город',
+                                                        100 * COUNT(*)/(select COUNT(*) from vacancies)  as 'Доля(%)'
+                                                        from vacancies
+                                                        group by area_name
+                                                        having COUNT(*) >= (SELECT COUNT(*) FROM vacancies) / 100
+                                                        ORDER BY COUNT(*) DESC 
+                                                        LIMIT 10
+                                                    """, con)
+        con.close()
 
     @staticmethod
     def csv_reader(file_name: str) -> []:
@@ -570,3 +578,15 @@ class DataSet:
         print("Динамика количества вакансий по годам для выбранной профессии: ", self.__current_count_by_year)
         print("Уровень зарплат по городам (в порядке убывания): ", sorted_salaries_by_town)
         print("Доля вакансий по городам (в порядке убывания): ", sorted_vacancies_by_rate)
+
+    def print_statistics_dataframes(self):
+        """
+        Выводит всю статистику в консоль
+        :return: Void
+        """
+        print("Динамика уровня зарплат по годам: \n", self.__salaries_by_year)
+        print("Динамика количества вакансий по годам: \n", self.__vacancies_count_by_year)
+        print("Динамика уровня зарплат по годам для выбранной профессии: \n", self.__current_salaries_by_year)
+        print("Динамика количества вакансий по годам для выбранной профессии: \n", self.__current_count_by_year)
+        print("Уровень зарплат по городам (в порядке убывания): \n", self.__salaries_by_town)
+        print("Доля вакансий по городам (в порядке убывания): \n", self.__vacancies_rate_by_town)
