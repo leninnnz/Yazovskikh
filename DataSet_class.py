@@ -221,7 +221,7 @@ class DataSet:
                 df.loc[len(df.index)] = row
         self.__currencies_data = df
 
-        con = sl.connect('currency.sqlite')
+        con = sl.connect('bd.sqlite')
         df.to_sql(name='currency', con=con, if_exists='replace')
 
     def __get_row(self, month: str, year: str):
@@ -259,35 +259,52 @@ class DataSet:
 
     def get_vacancies_data(self):
         """
-        Фильтрует все данные из line_data, вычисляет поле 'salary' и сохраняет выборку из датафрейма в CSV файл
+        Фильтрует все данные из line_data, загружает все данные в БД и вычисляет поле 'salary'
         :return: Void
         """
         self.__line_data['date'] = self.__line_data["published_at"].str[0:4] + '-'\
                                    + self.__line_data["published_at"].str[5:7]
-        self.__line_data = pd.merge(left=self.__line_data, right=self.__currencies_data, how='left', on='date')
-        dataFrames = []
+
+        con = sl.connect('bd.sqlite')
+        self.__line_data.to_sql(name='raw_vacancies', con=con, if_exists='replace')
+
+        cur = con.cursor()
+
+        cur.execute(f"""ALTER TABLE raw_vacancies ADD rate DECIMAL(10, 4)""")
         for currency in self.__available_currencies:
-            temp = self.__line_data[self.__line_data['salary_currency'] == currency]
-            temp['rate'] = temp[currency]
-            dataFrames.append(temp)
+            cur.execute(f"""UPDATE raw_vacancies
+                        SET rate = (SELECT {currency} from currency where currency.date = raw_vacancies.date)
+                        where salary_currency = '{currency}'
+                        """)
 
-        m = pd.concat(dataFrames, ignore_index=True)
-
-        self.__line_data = m[['name', 'salary_from', 'salary_to', 'salary_currency',
-                              'area_name', 'published_at', 'rate']][~m['rate'].isna()]
-
-        with_f = self.__line_data[(~self.__line_data['salary_from'].isna()) & (self.__line_data['salary_to'].isna())]
-        with_t = self.__line_data[(~self.__line_data['salary_to'].isna()) & (self.__line_data['salary_from'].isna())]
-        with_b = self.__line_data[(~self.__line_data['salary_to'].isna()) & (~self.__line_data['salary_from'].isna())]
-
-        with_f['salary'] = with_f['salary_from'] * with_f['rate']
-        with_t['salary'] = with_t['salary_to'] * with_t['rate']
-        with_b['salary'] = (with_b['salary_from'] + with_b['salary_to']) * with_b['rate']
-
-        self.__line_data = pd.concat([with_f, with_t, with_b],
-                                     ignore_index=True)[['name', 'salary', 'area_name', 'published_at']]
-
-        self.__line_data.head(100).to_csv('sample_vacancies.csv')
+        cur.execute(f"""ALTER TABLE raw_vacancies ADD salary MONEY""")
+        cur.execute(f"""UPDATE raw_vacancies
+                        SET salary = salary_from * rate
+                        where salary_from is not NULL and salary_to is NULL
+                    """)
+        cur.execute(f"""UPDATE raw_vacancies
+                        SET salary = salary_to * rate
+                        where salary_from is NULL and salary_to is not NULL
+                    """)
+        cur.execute(f"""UPDATE raw_vacancies
+                                SET salary = (salary_to + salary_from) / 2 * rate
+                                where salary_from is not NULL and salary_to is not NULL
+                            """)
+        cur.execute("""DELETE from raw_vacancies
+                        where salary is Null
+                     """)
+        cur.execute("""CREATE TABLE IF NOT EXISTS vacancies(
+                        name varchar(100),
+                        area_name varchar(50),
+                        published_at varchar(50),
+                        salary money)
+                    """)
+        cur.execute("""DELETE FROM vacancies""")
+        cur.execute("""INSERT INTO vacancies SELECT name, area_name, published_at, salary 
+                        from raw_vacancies
+                    """)
+        cur.execute("""DROP TABLE raw_vacancies""")
+        con.commit()
 
     def fill_dictionaries_by_pandas(self):
         """
