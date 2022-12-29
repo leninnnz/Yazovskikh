@@ -11,6 +11,7 @@ if __name__ == "__main__":
     data_set.generate_currency(dates[1], dates[0])
     data_set.get_vacancies_data()
     data_set.fill_dictionaries_by_pandas()
-    data_set.print_statistics_dictionaries()
-
+    report = Report()
+    img_name = report.generate_cut_image(data_set)
+    report.generate_cut_pdf(data_set, img_name)
 

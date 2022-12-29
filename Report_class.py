@@ -145,15 +145,36 @@ class Report:
         plt.figure(figsize=(100, 100))
         fig, axs = plt.subplots(2, 2)
 
-        self.__generate_salary_by_year_graph(data, axs,current_vacancy_name)
-        self.__generate_count_by_year_graph(data, axs, current_vacancy_name)
+        self.__generate_salary_by_year_graph(data, axs[0, 0],current_vacancy_name)
+        self.__generate_count_by_year_graph(data, axs[0, 1], current_vacancy_name)
         self.__generate_salary_by_town_graph(salaries_by_town, axs)
         self.__generate_rates_by_town_graph(rates_by_town, axs)
 
         fig.tight_layout()
         fig.savefig('graph.png')
 
-    def __generate_salary_by_year_graph(self, data: DataSet, axs, current_vacancy_name: str):
+    def generate_cut_image(self, data: DataSet) -> str:
+        """
+        Генерирует png изображение с графиками построенными на основе данных
+        :param data: DataSet
+            Данные для создания графиков
+        :return: str
+            Название файла, в который был сохранен график
+        """
+        matplotlib.rc('xtick', labelsize=8)
+        matplotlib.rc('xtick', labelsize=8)
+        plt.figure(figsize=(100, 100))
+        fig, axs = plt.subplots(2)
+
+        self.__generate_salary_by_year_graph(data, axs[0], data.current)
+        self.__generate_count_by_year_graph(data, axs[1], data.current)
+
+        file_name = 'cut_graph.png'
+        fig.tight_layout()
+        fig.savefig(file_name)
+        return  file_name
+
+    def __generate_salary_by_year_graph(self, data: DataSet, ax, current_vacancy_name: str):
         """
         Создает график показывающий динамику зарплат по годам
         :param data: DataSet
@@ -165,14 +186,14 @@ class Report:
         :return: void
         """
         x = list(map(lambda year: int(year), data.salaries_by_year.keys()))
-        axs[0, 0].bar(list(map(lambda c: c - 0.35, x)), data.salaries_by_year.values(), width=0.35, label="средняя з/п")
-        axs[0, 0].bar(x, data.current_salaries_by_year.values(), width=0.35, label="з/п " + current_vacancy_name)
-        axs[0, 0].set_title('Уровень зарплат по годам')
-        axs[0, 0].set_xticks(x, data.salaries_by_year.keys(), rotation=90, fontsize=8)
-        axs[0, 0].legend(fontsize=8)
-        axs[0, 0].grid(axis='y')
+        ax.bar(list(map(lambda c: c - 0.35, x)), data.salaries_by_year.values(), width=0.35, label="средняя з/п")
+        ax.bar(x, data.current_salaries_by_year.values(), width=0.35, label="з/п " + current_vacancy_name)
+        ax.set_title('Уровень зарплат по годам')
+        ax.set_xticks(x, data.salaries_by_year.keys(), rotation=90, fontsize=8)
+        ax.legend(fontsize=8)
+        ax.grid(axis='y')
 
-    def __generate_count_by_year_graph(self, data: DataSet, axs, current_vacancy_name: str):
+    def __generate_count_by_year_graph(self, data: DataSet, ax, current_vacancy_name: str):
         """
         Создает график показывающий динамику количества вакансий по годам
         :param data: DataSet
@@ -184,14 +205,14 @@ class Report:
         :return: void
         """
         x = list(map(lambda year: int(year), data.vacancies_count_by_year.keys()))
-        axs[0, 1].bar(list(map(lambda c: c - 0.35, x)), data.vacancies_count_by_year.values(),
+        ax.bar(list(map(lambda c: c - 0.35, x)), data.vacancies_count_by_year.values(),
                       width=0.35, label="Количество вакансий")
-        axs[0, 1].bar(x, data.current_count_by_year.values(),
+        ax.bar(x, data.current_count_by_year.values(),
                       width=0.35, label="Количество вакансий " + current_vacancy_name)
-        axs[0, 1].set_title('Количество вакансий по годам')
-        axs[0, 1].set_xticks(x, data.vacancies_count_by_year.keys(), rotation=90, fontsize=8)
-        axs[0, 1].legend(fontsize=8)
-        axs[0, 1].grid(axis='y')
+        ax.set_title('Количество вакансий по годам')
+        ax.set_xticks(x, data.vacancies_count_by_year.keys(), rotation=90, fontsize=8)
+        ax.legend(fontsize=8)
+        ax.grid(axis='y')
 
     def __generate_salary_by_town_graph(self, salaries_by_town: {str: float}, axs):
         """
@@ -259,6 +280,33 @@ class Report:
         config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
         options = {'enable-local-file-access': None}
         pdfkit.from_string(pdf_template, 'report.pdf', configuration=config, options=options)
+
+    def generate_cut_pdf(self, data: DataSet, image_file: str):
+        """
+        Генерирует отчет в виде PDF файла используя готовые файлы графиков
+        :param data: DataSet
+            Датасет с всей информацией
+        :param image_file: str
+            Название png файла с графиками
+        :return: void
+        """
+        env = Environment(loader=FileSystemLoader('.'))
+        template = env.get_template("cut_pdf_template.html")
+
+        years_headlines, years_values = [], []
+
+        years_headlines = ['Год', 'Средняя зарплата', f'Средняя зарплата - {data.current}', 'Количество вакансий',
+                           f'Количество вакансий {data.current}']
+        for year in data.salaries_by_year.keys():
+            years_values.append([year, data.salaries_by_year[year], data.current_salaries_by_year[year],
+                                 data.vacancies_count_by_year[year], data.current_count_by_year[year]])
+            print(years_values[-1])
+
+        pdf_template = template.render({'vacancy_name': data.current, 'image_file': image_file,
+                                        'years_headlines': years_headlines, 'years_values': years_values})
+        config = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
+        options = {'enable-local-file-access': None}
+        pdfkit.from_string(pdf_template, 'cut_report.pdf', configuration=config, options=options)
 
     def __fill_towns_table(self, xfile, towns_salaries_headlines: [str],
                            towns_rates_headlines: [str], towns_salaries_values: [float], towns_rates_values: [float]):

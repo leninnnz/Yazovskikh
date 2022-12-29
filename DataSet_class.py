@@ -101,6 +101,10 @@ class DataSet:
     def available_currencies(self):
         return self.__available_currencies
 
+    @property
+    def current(self):
+        return self.__current
+
     def load_data_from_hh(self):
         """
         Загружает информацию о вакансиях с сайта hh.ru и сохраняет их в CSV файл
